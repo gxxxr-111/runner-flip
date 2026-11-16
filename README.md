@@ -1,0 +1,45 @@
+# runner-flip
+
+> v0.1. Standard library only. Read-only unless you pass `--pin`.
+
+**GitHub is moving `ubuntu-latest` from Ubuntu 24.04 to 26.04 between 2026-10-19 and 2026-11-19** ([actions/runner-images#14748](https://github.com/actions/runner-images/issues/14748)). runner-flip tells you what that changes for **your** workflows.
+
+The announcement's table lists only Java among the version changes. The official image readmes show **26 major version changes and 18 removals**, including:
+
+| Tool | 24.04 | 26.04 |
+|---|---|---|
+| Java (default) | 17 | 25 |
+| Node.js | 22 | 24 |
+| Python | 3.12 | 3.14 |
+| PHP | 8.3 | 8.5 |
+| CMake | 3.31 | 4.4 |
+| Docker Compose | 2.38 | 5.1 |
+| Helm | 3.22 | 4.3 |
+| PostgreSQL | 16 | 18 |
+| Clang | 16–18 | 20–22 |
+| Removed | | Miniconda, Pulumi, Julia, fastlane, Mercurial, Lerna, Parcel, newman … |
+
+*(Computed from the [24.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md) and [26.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md) readmes on 2026-11-17. Run `--image-diff --refresh` for the current list.)*
+
+## What it does
+1. Finds every job in `.github/workflows/*.yml` (and `azure-pipelines.yml`) that runs on `ubuntu-latest`, directly or through a matrix.
+2. Detects which tools each job calls (`./gradlew`, `cmake`, `docker compose`, `helm`, `conda` …) and reports those whose version changed or were removed. Tools fixed by a setup action (`setup-node`, `setup-java`, `setup-python` …) are marked as safe.
+3. Flags behavior changes reported on the announcement issue: `sudo -E` under sudo-rs, the runner user changing from `vsts` to `runner`, pinned `apt install pkg=1.2.3`, hard-coded Ubuntu codenames, and `switch_root`.
+4. `--pin` rewrites `ubuntu-latest` to `ubuntu-24.04` as a quick escape. Review the diff and commit it.
+
+```bash
+python3 runnerflip.py path/to/repo          # report; exit 1 on high-risk findings
+python3 runnerflip.py path/to/repo --pin    # rewrite ubuntu-latest -> ubuntu-24.04
+python3 runnerflip.py --image-diff          # just the 24.04 -> 26.04 software diff
+```
+
+Real repos, scanned 2026-11-17: spring-petclinic → Helm 3→4 in its cluster job (its Gradle and Maven jobs are safe, because of `setup-java`). jq → Docker 28→29 in its docker job. Flask → 8 jobs, all safe.
+
+## Limits
+- Line-based, with no YAML parser: it finds tools by command name, so it can miss tools invoked indirectly through scripts or Makefiles.
+- A version change isn't necessarily a break. It's where to look first.
+
+## Tests
+`python3 -m unittest discover tests`, offline, with synthetic readmes and a fixture workflow.
+
+MIT license. Not affiliated with GitHub.

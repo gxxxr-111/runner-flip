@@ -1,0 +1,29 @@
+name: CI
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./gradlew build
+      - run: |
+          sudo -E apt-get install -y libfoo=1.2.3-1
+          cmake -S . -B build && cmake --build build
+          docker compose up -d
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci && npm test
+  legacy:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: java -version
+  matrix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - run: helm lint chart/
