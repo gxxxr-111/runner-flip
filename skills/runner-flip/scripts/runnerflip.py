@@ -27,7 +27,7 @@ CACHE = Path(os.environ.get("RUNNER_FLIP_CACHE", Path.home() / ".cache" / "runne
 
 # Behavior changes reported on the announcement issue (primary source), beyond version bumps.
 KNOWN = [
-    (re.compile(r"\bsudo\s+(-E|--preserve-env)\b"), "high",
+    (re.compile(r"\bsudo\s+(?:-E(?![\w=])|--preserve-env(?!=))"), "high",
      "26.04 defaults to sudo-rs; `sudo -E` / `--preserve-env` behaves differently. Pass variables explicitly "
      "(`sudo env VAR=$VAR cmd`) or use `--preserve-env=VAR1,VAR2`.", ISSUE),
     (re.compile(r"/home/vsts|\bvsts\b"), "high",
@@ -184,6 +184,8 @@ def split_jobs(path: Path) -> list[Job]:
         if re.match(r"^jobs:\s*$", line):
             in_jobs = True
             continue
+        if re.match(r"^\s*(#|$)", line):   # comments and blank lines never end the jobs block
+            continue
         if in_jobs and re.match(r"^\S", line):  # left the jobs block
             in_jobs = False
             if cur:
@@ -254,14 +256,21 @@ def analyze_job(job: Job, changes: dict):
 # ---------------------------------------------------------------- pin
 
 def pin_file(path: Path, jobs: list[Job]) -> int:
-    text = path.read_text()
-    new = re.sub(r"(runs-on:\s*['\"]?)ubuntu-latest", r"\1ubuntu-24.04", text)
-    new = re.sub(r"(vmImage:\s*['\"]?)ubuntu-latest", r"\1ubuntu-24.04", new)
-    new = re.sub(r"(os:\s*\[[^\]]*?)ubuntu-latest", r"\1ubuntu-24.04", new)
-    if new != text:
-        path.write_text(new)
-        return text.count("ubuntu-latest") - new.count("ubuntu-latest")
-    return 0
+    """Rewrite every non-comment `ubuntu-latest` (runs-on, vmImage, flow or block matrices),
+    preserving the file's line endings."""
+    with open(path, newline="", encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    out, n = [], 0
+    for line in text.splitlines(keepends=True):
+        code, sep, comment = line.partition("#")
+        if "ubuntu-latest" in code:
+            n += code.count("ubuntu-latest")
+            line = code.replace("ubuntu-latest", "ubuntu-24.04") + sep + comment
+        out.append(line)
+    if n:
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            f.write("".join(out))
+    return n
 
 
 # ---------------------------------------------------------------- CLI

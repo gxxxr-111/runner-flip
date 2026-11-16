@@ -101,5 +101,35 @@ class Workflows(unittest.TestCase):
             shutil.rmtree(tmp)
 
 
+class ReviewRegressions(unittest.TestCase):
+    def test_comment_between_jobs_and_sudo_remedy(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            wf = tmp / "ci.yml"
+            wf.write_text("jobs:\n  a:\n    runs-on: ubuntu-24.04\n# ---- next ----\n  b:\n    runs-on: ubuntu-latest\n"
+                          "    steps:\n      - run: sudo --preserve-env=FOO make\n")
+            jobs = rf.split_jobs(wf)
+            self.assertEqual([(j.name, j.latest) for j in jobs], [("a", False), ("b", True)])
+            rf.analyze_job(jobs[1], {})
+            self.assertFalse(any("sudo-rs" in f.message for f in jobs[1].findings))
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_pin_block_matrix_duplicates_and_crlf(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            wf = tmp / "ci.yml"
+            wf.write_bytes(b"jobs:\r\n  t:\r\n    strategy:\r\n      matrix:\r\n        os:\r\n          - ubuntu-latest\r\n"
+                           b"          - windows-latest\r\n    runs-on: ${{ matrix.os }} # was ubuntu-latest\r\n"
+                           b"  u:\r\n    strategy: { matrix: { os: [ubuntu-latest, ubuntu-latest] } }\r\n")
+            self.assertEqual(rf.pin_file(wf, []), 3)
+            data = wf.read_bytes()
+            self.assertNotIn(b"- ubuntu-latest", data)
+            self.assertIn(b"# was ubuntu-latest", data, "comments untouched")
+            self.assertEqual(data.count(b"\r\n"), 10, "CRLF preserved")
+        finally:
+            shutil.rmtree(tmp)
+
+
 if __name__ == "__main__":
     unittest.main()
