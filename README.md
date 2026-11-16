@@ -23,7 +23,7 @@ The announcement's table lists only Java among the version changes. The official
 
 ## What it does
 1. Finds every job in `.github/workflows/*.yml` (and `azure-pipelines.yml`) that runs on `ubuntu-latest`, directly or through a matrix.
-2. Detects which tools each job calls (`./gradlew`, `cmake`, `docker compose`, `helm`, `conda` …) and reports those whose version changed or were removed. Tools fixed by a setup action (`setup-node`, `setup-java`, `setup-python` …) are marked as safe.
+2. Detects which tools each job calls (including through local composite actions, `uses: ./.github/actions/…`) (`./gradlew`, `cmake`, `docker compose`, `helm`, `conda` …) and reports those whose version changed or were removed. Tools fixed by a setup action (`setup-node`, `setup-java`, `setup-python` …) are marked as safe.
 3. Flags behavior changes reported on the announcement issue: `sudo -E` under sudo-rs, the runner user changing from `vsts` to `runner`, pinned `apt install pkg=1.2.3`, hard-coded Ubuntu codenames, and `switch_root`.
 4. `--pin` rewrites `ubuntu-latest` to `ubuntu-24.04` as a quick escape. Review the diff and commit it.
 
@@ -32,6 +32,8 @@ python3 runnerflip.py path/to/repo          # report; exit 1 on high-risk findin
 python3 runnerflip.py path/to/repo --pin    # rewrite ubuntu-latest -> ubuntu-24.04
 python3 runnerflip.py --image-diff          # just the 24.04 -> 26.04 software diff
 ```
+
+**How common is this?** Across the 30 most-starred GitHub repos pushed since 2026-10-01, scanned 2026-11-17: 21 have workflows, **all 21 run jobs on `ubuntu-latest`**, and **8 (38%) have high-risk findings**, mostly Node 22→24 and Docker 28→29 in jobs that don't pin them.
 
 Real repos, scanned 2026-11-17: spring-petclinic → Helm 3→4 in its cluster job (its Gradle and Maven jobs are safe, because of `setup-java`). jq → Docker 28→29 in its docker job. Flask → 8 jobs, all safe.
 

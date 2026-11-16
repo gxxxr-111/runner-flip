@@ -101,6 +101,27 @@ class Workflows(unittest.TestCase):
             shutil.rmtree(tmp)
 
 
+class LocalActions(unittest.TestCase):
+    def test_local_composite_action_pins_node(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            (tmp / ".github/workflows").mkdir(parents=True)
+            (tmp / ".github/actions/setup-env").mkdir(parents=True)
+            (tmp / ".github/actions/setup-env/action.yml").write_text("runs:\n  using: composite\n  steps:\n    - uses: actions/setup-node@v4\n")
+            wf = tmp / ".github/workflows/ci.yml"
+            wf.write_text("jobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: ./.github/actions/setup-env\n      - run: npm test\n")
+            ch = rf.diff_images(rf.parse_readme(OLD), rf.parse_readme(NEW))
+            job = rf.split_jobs(wf)[0]
+            rf.analyze_job(job, ch, tmp)
+            self.assertTrue(all(f.severity == "info" for f in job.findings), job.findings)
+            # without the action file, the conventional name is enough
+            job2 = rf.Job("ci.yml", "u", 1, "ubuntu-latest", True, "steps:\n  - uses: ./.github/actions/setup-nodejs\n  - run: node x.js\n")
+            rf.analyze_job(job2, ch, None)
+            self.assertTrue(all(f.severity == "info" for f in job2.findings), job2.findings)
+        finally:
+            shutil.rmtree(tmp)
+
+
 class ReviewRegressions(unittest.TestCase):
     def test_comment_between_jobs_and_sudo_remedy(self):
         tmp = Path(tempfile.mkdtemp())

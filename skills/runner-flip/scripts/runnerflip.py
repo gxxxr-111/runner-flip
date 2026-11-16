@@ -214,6 +214,30 @@ def split_jobs(path: Path) -> list[Job]:
     return out
 
 
+LOCAL_SETUP = {"node": "node.js", "nodejs": "node.js", "python": "python", "java": "java", "go": "go",
+               "ruby": "ruby", "php": "php", "dotnet": ".net", "gradle": "gradle"}
+
+
+def inline_local_actions(text: str, repo: Path | None) -> str:
+    """Append the steps of local composite actions (`uses: ./path`) so their tools count for the job."""
+    extra = []
+    for m in re.finditer(r"uses:\s*['\"]?\./([\w./-]+?)/?['\"]?\s*$", text, re.M):
+        path = m.group(1)
+        found = False
+        if repo is not None:
+            for name in ("action.yml", "action.yaml"):
+                f = repo / path / name
+                if f.is_file():
+                    extra.append(f.read_text(errors="replace"))
+                    found = True
+                    break
+        if not found:   # file not available: infer from a conventional name like setup-nodejs
+            mm = re.search(r"setup[-_]?(nodejs|node|python|java|go|ruby|php|dotnet|gradle)", path, re.I)
+            if mm:
+                extra.append(f"uses: local-setup/{mm.group(1).lower()}")
+    return text + ("\n" + "\n".join(extra) if extra else "")
+
+
 def tokens_used(text: str) -> set[str]:
     used = set()
     for t in re.findall(r"(?<![\w/.-])(\.?/?[A-Za-z][\w.+-]*)", text):
@@ -223,12 +247,16 @@ def tokens_used(text: str) -> set[str]:
         for tool, action in SETUP_ACTIONS.items():
             if m.group(1).startswith(action):
                 used.add("setup:" + tool)
+        lm = re.match(r"local-setup/(\w+)", m.group(1))
+        if lm and lm.group(1) in LOCAL_SETUP:
+            used.add("setup:" + LOCAL_SETUP[lm.group(1)])
     return used
 
 
-def analyze_job(job: Job, changes: dict):
+def analyze_job(job: Job, changes: dict, repo: Path | None = None):
     if not job.latest:
         return
+    job.text = inline_local_actions(job.text, repo)
     for rx, sev, msg, src in KNOWN:
         if rx.search(job.text):
             job.findings.append(Finding(sev, msg, src))
@@ -318,7 +346,7 @@ def main(argv=None):
         return
     jobs = [j for p in find_workflows(root) for j in split_jobs(p)]
     for j in jobs:
-        analyze_job(j, changes)
+        analyze_job(j, changes, root)
     if a.json:
         print(json.dumps([{**{k: v for k, v in j.__dict__.items() if k != "text"},
                            "findings": [f.__dict__ for f in j.findings]} for j in jobs], indent=1))
