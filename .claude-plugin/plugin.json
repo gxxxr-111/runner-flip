@@ -6,5 +6,14 @@
     "name": "gxxxr-111"
   },
   "repository": "https://github.com/gxxxr-111/runner-flip",
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": [
+    "github-actions",
+    "ci",
+    "runner-images",
+    "ubuntu",
+    "azure-pipelines",
+    "devops",
+    "breaking-changes"
+  ]
 }
