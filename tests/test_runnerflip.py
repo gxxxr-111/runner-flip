@@ -175,6 +175,19 @@ class ReviewRegressions(unittest.TestCase):
             shutil.rmtree(tmp)
 
 
+class ReadmeFormat(unittest.TestCase):
+    def test_unparseable_readme_exits_2(self):
+        real = rf.fetch_readme
+        rf.fetch_readme = lambda v, refresh=False: "# Ubuntu\nSoftware list moved elsewhere."
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                with self.assertRaises(SystemExit) as cm:
+                    rf.main([d])
+            self.assertEqual(cm.exception.code, 2)
+        finally:
+            rf.fetch_readme = real
+
+
 class DockerStore(unittest.TestCase):
     def test_containerd_store_rule(self):
         rx = [k for k in rf.KNOWN if "containerd" in k[2]][0][0]

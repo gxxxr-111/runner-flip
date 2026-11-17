@@ -95,6 +95,9 @@ class Job:
 
 # ---------------------------------------------------------------- image readmes
 
+MIN_TOOLS = 20
+
+
 def fetch_readme(v: str, refresh=False) -> str:
     CACHE.mkdir(parents=True, exist_ok=True)
     p = CACHE / f"Ubuntu{v}-Readme.md"
@@ -368,7 +371,13 @@ def main(argv=None):
     ap.add_argument("--image-diff", action="store_true", help="just print the image software diff")
     a = ap.parse_args(argv)
     root = Path(a.repo).resolve()
-    changes = diff_images(parse_readme(fetch_readme(a.old, a.refresh)), parse_readme(fetch_readme(a.new, a.refresh)))
+    old_tools, new_tools = parse_readme(fetch_readme(a.old, a.refresh)), parse_readme(fetch_readme(a.new, a.refresh))
+    for v, tools in ((a.old, old_tools), (a.new, new_tools)):
+        if len(tools) < MIN_TOOLS:   # the readmes list hundreds; a handful means the format changed, not the image
+            print(f"error: parsed only {len(tools)} tools from the Ubuntu {v} image readme; its format may have changed, "
+                  "so results would be a false all-clear. Check the readme or update runner-flip.", file=sys.stderr)
+            sys.exit(2)
+    changes = diff_images(old_tools, new_tools)
     if a.image_diff:
         for k, (ov, nv, kind) in sorted(changes.items(), key=lambda kv: (kv[1][2], kv[0])):
             if kind != "minor":
