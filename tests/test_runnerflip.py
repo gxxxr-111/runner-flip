@@ -122,6 +122,29 @@ class LocalActions(unittest.TestCase):
             shutil.rmtree(tmp)
 
 
+class LocalActionDeltas(unittest.TestCase):
+    def test_comments_nesting_traversal_names(self):
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            (tmp / "repo/.github/actions/a").mkdir(parents=True)
+            (tmp / "repo/.github/actions/b").mkdir(parents=True)
+            (tmp / "outside/x").mkdir(parents=True)
+            (tmp / "repo/.github/actions/a/action.yml").write_text("runs:\n  steps:\n    - uses: ./.github/actions/b\n")
+            (tmp / "repo/.github/actions/b/action.yml").write_text("runs:\n  steps:\n    - uses: actions/setup-node@v4\n")
+            (tmp / "outside/x/action.yml").write_text("SECRET-OUTSIDE uses: actions/setup-node@v4\n")
+            repo = tmp / "repo"
+            nested = rf.inline_local_actions("steps:\n  - uses: ./.github/actions/a # setup\n", repo)
+            self.assertIn("setup:node.js", rf.tokens_used(nested))
+            self.assertNotIn("SECRET-OUTSIDE", rf.inline_local_actions("steps:\n  - uses: ./../outside/x\n", repo))
+            self.assertNotIn("SECRET-OUTSIDE", rf.inline_local_actions("steps:\n  - uses: ./.github/actions/../../../outside/x\n", repo))
+            commented = rf.inline_local_actions("steps:\n  # - uses: ./.github/actions/b\n", repo)
+            self.assertNotIn("setup:node.js", rf.tokens_used(commented))
+            self.assertNotIn("setup:go", rf.tokens_used(rf.inline_local_actions("  - uses: ./.github/actions/setup-google-cloud\n", None)))
+            self.assertIn("setup:node.js", rf.tokens_used(rf.inline_local_actions("  - uses: ./.github/actions/setup-nodejs\n", None)))
+        finally:
+            shutil.rmtree(tmp)
+
+
 class ReviewRegressions(unittest.TestCase):
     def test_comment_between_jobs_and_sudo_remedy(self):
         tmp = Path(tempfile.mkdtemp())

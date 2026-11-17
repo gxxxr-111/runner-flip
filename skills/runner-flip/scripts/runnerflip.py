@@ -218,21 +218,44 @@ LOCAL_SETUP = {"node": "node.js", "nodejs": "node.js", "python": "python", "java
                "ruby": "ruby", "php": "php", "dotnet": ".net", "gradle": "gradle"}
 
 
-def inline_local_actions(text: str, repo: Path | None) -> str:
-    """Append the steps of local composite actions (`uses: ./path`) so their tools count for the job."""
+def _strip_yaml_comments(text: str) -> str:
+    out = []
+    for line in text.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        out.append(re.sub(r"\s+#.*$", "", line))
+    return "\n".join(out)
+
+
+LOCAL_USES = re.compile(r"""^\s*-?\s*uses:\s*['"]?\./([\w./-]*?)/?['"]?\s*$""", re.M)
+LOCAL_SETUP_NAME = re.compile(r"setup[-_]?(nodejs|node|python|java|go|ruby|php|dotnet|gradle)"
+                              r"(?:[-_](?:env|environment|toolchain|sdk|runtime|version))?$", re.I)
+
+
+def inline_local_actions(text: str, repo: Path | None, _seen: set | None = None, _depth: int = 0) -> str:
+    """Append the steps of local composite actions (`uses: ./path`, recursively, inside the repo only)."""
+    seen = _seen if _seen is not None else set()
+    text = _strip_yaml_comments(text)
     extra = []
-    for m in re.finditer(r"uses:\s*['\"]?\./([\w./-]+?)/?['\"]?\s*$", text, re.M):
+    for m in LOCAL_USES.finditer(text):
         path = m.group(1)
+        if path.endswith((".yml", ".yaml")) and "/workflows/" in "/" + path:
+            continue   # reusable workflow: a job of its own, not step text
         found = False
-        if repo is not None:
+        if repo is not None and _depth < 4:
+            root = repo.resolve()
             for name in ("action.yml", "action.yaml"):
-                f = repo / path / name
-                if f.is_file():
-                    extra.append(f.read_text(errors="replace"))
+                f = (repo / path / name).resolve()
+                if not f.is_relative_to(root):
+                    break   # never read outside the repository
+                if f.is_file() and f not in seen:
+                    seen.add(f)
+                    extra.append(inline_local_actions(f.read_text(errors="replace"), repo, seen, _depth + 1))
                     found = True
                     break
-        if not found:   # file not available: infer from a conventional name like setup-nodejs
-            mm = re.search(r"setup[-_]?(nodejs|node|python|java|go|ruby|php|dotnet|gradle)", path, re.I)
+        if not found:   # file not available: infer only from an exact conventional name like setup-nodejs
+            last = path.rstrip("/").split("/")[-1] if path else ""
+            mm = LOCAL_SETUP_NAME.fullmatch(last)
             if mm:
                 extra.append(f"uses: local-setup/{mm.group(1).lower()}")
     return text + ("\n" + "\n".join(extra) if extra else "")
