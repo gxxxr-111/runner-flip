@@ -221,6 +221,17 @@ class WindowsNov30(unittest.TestCase):
         self.assertEqual(ok.findings, [])
 
 
+class MacOpenSSL(unittest.TestCase):
+    def test_openssl4_on_macos26_only(self):
+        for ro, n in (("macos-latest", 1), ("macos-26-intel", 1), ("macos-15", 0), ("ubuntu-latest", 0)):
+            j = rf.Job("w.yml", "j", 1, ro, ro == "ubuntu-latest", "steps:\n - run: openssl req -new -x509 -nodes\n")
+            rf.analyze_job(j, {}, None)
+            self.assertEqual(sum("OpenSSL 4" in f.message for f in j.findings), n, ro)
+        w = rf.Job("w.yml", "j", 1, "macos-latest", False, "steps:\n - run: echo use openssl later\n")
+        rf.analyze_job(w, {}, None)
+        self.assertEqual(w.findings, [])
+
+
 class RunsOnParsing(unittest.TestCase):
     def test_comments_and_azure(self):
         with tempfile.TemporaryDirectory() as d:

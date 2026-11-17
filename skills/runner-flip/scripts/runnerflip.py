@@ -294,6 +294,11 @@ OWN_GO = re.compile(r"mingw-w64-[\w-]*-go(?![\w-])|apt(?:-get)?\s+install[^\n]*\
 GO_DEFAULT = "https://github.com/actions/runner-images/issues/15253"
 REFS = "https://github.com/actions/runner-images/issues/15315"
 ARM_WS = "https://github.com/actions/runner-images/issues/15314"
+MAC_OPENSSL = "https://github.com/actions/runner-images/issues/14856"
+MACOS_26 = re.compile(r"\bmacos-(?:latest(?:-large)?|26(?:-intel|-large|-xlarge)?)\b")   # runner-images README labels
+OPENSSL_CMD = re.compile(r"(?:^|[\s;&|(`])openssl\s+(?:req|x509|genrsa|genpkey|rsa|pkey|pkcs12|pkcs8|pkcs7|dgst|enc|"
+                         r"s_client|s_server|verify|rand|version|ec|ecparam|ca|cms|smime|base64|sha\d+|md5|crl|"
+                         r"speed|list|kdf|mac|ocsp|asn1parse)\b")
 # NTFS features ReFS lacks (Microsoft ReFS overview): short 8.3 names, quotas, object IDs, transactions
 NTFS_ONLY = re.compile(r"\bfsutil\s+(?:8dot3name|quota|objectid|transaction)\b|\b[Dd]:[\\/][^\s'\"]*~\d")
 ARM_C_WORKSPACE = re.compile(r"\b[Cc]:[\\/]+a[\\/]")
@@ -328,6 +333,11 @@ def image_notices(job: Job) -> None:
         job.findings.append(Finding("medium",
             "From **2026-11-30** the workspace on Windows 11 Arm64 moves to `D:`; this job hard-codes a `C:\\a\\…` "
             "path. Use `${{ github.workspace }}` / `GITHUB_WORKSPACE`.", ARM_WS))
+    if MACOS_26.search(img) and OPENSSL_CMD.search(code):
+        job.findings.append(Finding("medium",
+            "On macOS 26 images (`macos-latest`, `macos-26*`) the default `openssl` became **OpenSSL 4** "
+            "(rollout 2026-11-02 → 11-15). Scripts that expect 3.x options or output may break; OpenSSL 3 stays "
+            "available via its versioned Homebrew prefix (`$(brew --prefix openssl@3)/bin/openssl`).", MAC_OPENSSL))
     uses_go = GO_CMD.search(code) is not None
     on_affected = any(k in img for k in ("ubuntu-22.04", "ubuntu-24.04", "windows")) or job.latest
     if uses_go and "setup:go" not in tokens_used(job.text) and not OWN_GO.search(code) and on_affected:
