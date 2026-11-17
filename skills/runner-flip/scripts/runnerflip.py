@@ -39,6 +39,13 @@ KNOWN = [
      "Pinned apt package versions (`pkg=1.2.3`) are almost never in the 26.04 archive.", ISSUE),
     (re.compile(r"\b(focal|jammy|noble)\b"), "medium",
      "Hard-coded Ubuntu codename. 26.04 is `resolute`; repository lines for noble/jammy may break.", ISSUE),
+    (re.compile(r"\bdocker\s+(?:image\s+)?(?:save|load|inspect|images|ls|history)\b|\bdocker\s+(?:buildx\s+)?build\b[^\n]*--platform"),
+     "medium",
+     "Docker 29 on the 26.04 image uses the **containerd image store** by default for fresh installs, which changes "
+     "image IDs, `docker save` output and multi-platform handling; users reported breakage on 2026-11-15. Docker's "
+     "storage docs control it with the `containerd-snapshotter` feature in /etc/docker/daemon.json (setting it to "
+     "false should restore the classic store), or pin the job to `ubuntu-24.04`.",
+     "https://docs.docker.com/engine/release-notes/29/"),
 ]
 # Command tokens -> readme tool names (lowercase first word of the readme entry).
 ALIASES = {

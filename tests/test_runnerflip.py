@@ -175,5 +175,15 @@ class ReviewRegressions(unittest.TestCase):
             shutil.rmtree(tmp)
 
 
+class DockerStore(unittest.TestCase):
+    def test_containerd_store_rule(self):
+        rx = [k for k in rf.KNOWN if "containerd" in k[2]][0][0]
+        for yes in ("docker save app -o a.tar", "docker image inspect app", "docker buildx build --platform linux/arm64 .",
+                    "docker images --digests"):
+            self.assertTrue(rx.search(yes), yes)
+        for no in ("docker run app", "docker compose up", "docker build -t app .", "echo dockerimages"):
+            self.assertFalse(rx.search(no), no)
+
+
 if __name__ == "__main__":
     unittest.main()
