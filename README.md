@@ -21,6 +21,17 @@ The announcement's table lists only Java among the version changes. The official
 
 *(Computed from the [24.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md) and [26.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md) readmes on 2026-11-17. Run `--image-diff --refresh` for the current list.)*
 
+## Install
+
+As a Claude Code plugin:
+
+```
+/plugin marketplace add gxxxr-111/runner-flip
+/plugin install runner-flip@runner-flip
+```
+
+Or copy `skills/runner-flip` into `~/.claude/skills/`, or run the script directly (Python 3.10+, standard library only, no dependencies).
+
 ## What it does
 1. Finds every job in `.github/workflows/*.yml` (and `azure-pipelines.yml`) that runs on `ubuntu-latest`, directly or through a matrix.
 2. Detects which tools each job calls (including through local composite actions, `uses: ./.github/actions/…`) (`./gradlew`, `cmake`, `docker compose`, `helm`, `conda` …) and reports those whose version changed or were removed. Tools fixed by a setup action (`setup-node`, `setup-java`, `setup-python` …) are marked as safe.
