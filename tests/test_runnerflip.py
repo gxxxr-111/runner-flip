@@ -208,6 +208,19 @@ class ImageNotices(unittest.TestCase):
         self.assertEqual(mac.findings, [])
 
 
+class WindowsNov30(unittest.TestCase):
+    def test_refs_and_arm_workspace(self):
+        j = rf.Job("w.yml", "j", 1, "windows-2025", False, "steps:\n - run: fsutil 8dot3name set D: 1\n")
+        rf.analyze_job(j, {}, None)
+        self.assertIn("ReFS", " ".join(f.message for f in j.findings))
+        a = rf.Job("w.yml", "j", 1, "windows-11-arm", False, "steps:\n - run: cd C:\\a\\repo\\repo\n")
+        rf.analyze_job(a, {}, None)
+        self.assertIn("Arm64 moves to `D:`", " ".join(f.message for f in a.findings))
+        ok = rf.Job("w.yml", "j", 1, "windows-2025", False, "steps:\n - run: dir C:\\PROGRA~1\n")   # C: stays NTFS
+        rf.analyze_job(ok, {}, None)
+        self.assertEqual(ok.findings, [])
+
+
 class RunsOnParsing(unittest.TestCase):
     def test_comments_and_azure(self):
         with tempfile.TemporaryDirectory() as d:

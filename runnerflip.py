@@ -292,6 +292,11 @@ OWN_GO = re.compile(r"mingw-w64-[\w-]*-go(?![\w-])|apt(?:-get)?\s+install[^\n]*\
                     r"image:\s*['\"]?golang|container:\s*['\"]?golang|docker://golang|\bgoenv\b|asdf\s+install\s+golang|"
                     r"\bgvm\s+use\b")
 GO_DEFAULT = "https://github.com/actions/runner-images/issues/15253"
+REFS = "https://github.com/actions/runner-images/issues/15315"
+ARM_WS = "https://github.com/actions/runner-images/issues/15314"
+# NTFS features ReFS lacks (Microsoft ReFS overview): short 8.3 names, quotas, object IDs, transactions
+NTFS_ONLY = re.compile(r"\bfsutil\s+(?:8dot3name|quota|objectid|transaction)\b|\b[Dd]:[\\/][^\s'\"]*~\d")
+ARM_C_WORKSPACE = re.compile(r"\b[Cc]:[\\/]+a[\\/]")
 
 
 GO_CMD = re.compile(r"(?:^|[\s;&|(`])go\s+(?:build|test|run|install|mod|vet|generate|get|work|env|version|fmt|list|tool)\b"
@@ -314,6 +319,15 @@ def image_notices(job: Job) -> None:
             "implied by the retirement date). Move to `ubuntu-24.04` or `ubuntu-26.04` before the first brownout.",
             UBUNTU_2204))
     code = _strip_yaml_comments(job.text)
+    if "windows" in img and NTFS_ONLY.search(code):
+        job.findings.append(Finding("medium",
+            "From **2026-11-30** the `D:` drive on Windows images is ReFS, not NTFS. This job uses an NTFS-only "
+            "feature (8.3 short names, quotas, object IDs or transactions per Microsoft's ReFS overview) "
+            "on or via `D:`.", REFS))
+    if "windows-11-arm" in img and ARM_C_WORKSPACE.search(code):
+        job.findings.append(Finding("medium",
+            "From **2026-11-30** the workspace on Windows 11 Arm64 moves to `D:`; this job hard-codes a `C:\\a\\…` "
+            "path. Use `${{ github.workspace }}` / `GITHUB_WORKSPACE`.", ARM_WS))
     uses_go = GO_CMD.search(code) is not None
     on_affected = any(k in img for k in ("ubuntu-22.04", "ubuntu-24.04", "windows")) or job.latest
     if uses_go and "setup:go" not in tokens_used(job.text) and not OWN_GO.search(code) and on_affected:
