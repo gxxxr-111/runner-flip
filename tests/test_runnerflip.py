@@ -194,9 +194,31 @@ class ImageNotices(unittest.TestCase):
         msys = self.job("windows-latest", "steps:\n - uses: msys2/setup-msys2@v2\n   with:\n     install: >\n       mingw-w64-x86_64-go\n - run: go build\n")
         rf.analyze_job(msys, {}, None)
         self.assertEqual([f for f in msys.findings if "1.24" in f.message], [])   # brings its own Go
+        word = self.job("ubuntu-24.04", "name: Let's go\nsteps:\n - run: echo ready, go\n")
+        rf.analyze_job(word, {}, None)
+        self.assertEqual(word.findings, [])                                      # 'go' as a word, not a command
+        task = self.job("ubuntu-24.04", "steps:\n - run: brew install go-task\n - run: go build ./...\n")
+        rf.analyze_job(task, {}, None)
+        self.assertEqual(len(task.findings), 1)                                  # go-task is not Go
+        matrix = self.job("${{ matrix.os }}", "strategy:\n  matrix:\n    os: [ubuntu-22.04, macos-15]\nsteps:\n - run: make\n")
+        rf.analyze_job(matrix, {}, None)
+        self.assertIn("2027-04-17", " ".join(f.message for f in matrix.findings))
         mac = self.job("macos-15", "steps:\n - run: go build\n")                 # not in the announced set
         rf.analyze_job(mac, {}, None)
         self.assertEqual(mac.findings, [])
+
+
+class RunsOnParsing(unittest.TestCase):
+    def test_comments_and_azure(self):
+        with tempfile.TemporaryDirectory() as d:
+            wf = Path(d) / ".github" / "workflows"
+            wf.mkdir(parents=True)
+            (wf / "a.yml").write_text("jobs:\n  b:\n    # runs-on: ubuntu-22.04\n    runs-on: ubuntu-24.04 # moved off ubuntu-22.04\n"
+                                      "    steps:\n      - run: make\n")
+            (Path(d) / "azure-pipelines.yml").write_text("pool:\n  vmImage: 'ubuntu-22.04'\nsteps:\n- script: make\n")
+            jobs = [j for f in rf.find_workflows(Path(d)) for j in rf.split_jobs(f)]
+        ro = sorted(j.runs_on for j in jobs)
+        self.assertEqual(ro, ["'ubuntu-22.04'", "ubuntu-24.04"])
 
 
 class ReadmeFormat(unittest.TestCase):

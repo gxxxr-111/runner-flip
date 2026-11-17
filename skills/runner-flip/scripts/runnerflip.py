@@ -8,7 +8,7 @@ those jobs use whose version changed or that were removed. The changes are compu
 live from the official image readmes. It also checks known behavior changes
 reported on the announcement issue. Optionally pins jobs to ubuntu-24.04.
 
-Standard library only. Exit code 1 when a job on ubuntu-latest has high-risk findings.
+Standard library only. Exit code 1 when any job has a high-risk finding; 2 when an image readme can't be parsed.
 """
 from __future__ import annotations
 
@@ -212,11 +212,11 @@ def split_jobs(path: Path) -> list[Job]:
             cur, start = m.group(2), i
     out = []
     whole = "\n".join(lines)
-    if not jobs and re.search(r"vmImage:\s*['\"]?ubuntu-latest", whole):  # Azure Pipelines, no jobs: block
+    if not jobs and re.search(r"vmImage:\s*['\"]?[\w.-]", whole):  # Azure Pipelines, no jobs: block
         jobs = [("pipeline", 0, lines)]
     for name, ln, block in jobs:
         text = "\n".join(block)
-        ro = re.search(r"(?:runs-on|vmImage):\s*(.+)", text)
+        ro = re.search(r"(?m)^[\s-]*(?:runs-on|vmImage):\s*(.+)", _strip_yaml_comments(text))
         runs_on = ro.group(1).strip() if ro else ""
         latest = "ubuntu-latest" in runs_on or (
             "matrix" in runs_on and re.search(r"ubuntu-latest", text) is not None)
@@ -287,26 +287,38 @@ def tokens_used(text: str) -> set[str]:
 
 
 UBUNTU_2204 = "https://github.com/actions/runner-images/issues/14254"
-OWN_GO = re.compile(r"mingw-w64-[\w-]*-go\b|apt(?:-get)?\s+install[^\n]*\bgolang|brew\s+install[^\n]*\bgo\b|"
+OWN_GO = re.compile(r"mingw-w64-[\w-]*-go(?![\w-])|apt(?:-get)?\s+install[^\n]*\bgolang(?:-go|-1\.\d+(?:-go)?)?(?![\w-])|"
+                    r"brew\s+install[^\n]*\bgo(?:@[\d.]+)?(?![\w-])|"
                     r"image:\s*['\"]?golang|container:\s*['\"]?golang|docker://golang|\bgoenv\b|asdf\s+install\s+golang|"
                     r"\bgvm\s+use\b")
 GO_DEFAULT = "https://github.com/actions/runner-images/issues/15253"
 
 
+GO_CMD = re.compile(r"(?:^|[\s;&|(`])go\s+(?:build|test|run|install|mod|vet|generate|get|work|env|version|fmt|list|tool)\b"
+                    r"|languages?:\s*\[?\s*['\"]?go\b")   # CodeQL builds Go with the PATH toolchain
+
+
+def _image_text(job: Job) -> str:
+    """runs-on, or for a matrix job the job text too (`runs-on: ${{ matrix.os }}` with `os: [ubuntu-22.04, …]`)."""
+    ro = job.runs_on.lower()
+    return ro + "\n" + _strip_yaml_comments(job.text).lower() if "${{" in ro else ro
+
+
 def image_notices(job: Job) -> None:
     """Dated changes that also hit jobs NOT on ubuntu-latest (including ones pinned by runner-flip --pin)."""
-    ro = job.runs_on.lower()
-    if "ubuntu-22.04" in ro:
-        job.findings.append(Finding("high",
+    img = _image_text(job)
+    if "ubuntu-22.04" in img:
+        job.findings.append(Finding("medium",
             "`ubuntu-22.04` is deprecated and retires on **2027-04-17** (jobs then fail). Scheduled brownouts fail jobs "
             "on March 23, March 30, April 6 and April 13 (14:00–24:00 UTC; the announcement omits the year, 2027 "
-            "implied by the retirement date). Move to `ubuntu-24.04` or `ubuntu-26.04`.", UBUNTU_2204))
-    used = tokens_used(job.text)
-    on_affected = any(k in ro for k in ("ubuntu-22.04", "ubuntu-24.04", "windows")) or job.latest
-    own_go = OWN_GO.search(job.text)   # Go from msys2/apt/brew/container/version managers, not the image default
-    if "go" in used and "setup:go" not in used and not own_go and on_affected:
+            "implied by the retirement date). Move to `ubuntu-24.04` or `ubuntu-26.04` before the first brownout.",
+            UBUNTU_2204))
+    code = _strip_yaml_comments(job.text)
+    uses_go = GO_CMD.search(code) is not None
+    on_affected = any(k in img for k in ("ubuntu-22.04", "ubuntu-24.04", "windows")) or job.latest
+    if uses_go and "setup:go" not in tokens_used(job.text) and not OWN_GO.search(code) and on_affected:
         job.findings.append(Finding("medium",
-            "Uses the preinstalled `go` without `actions/setup-go`: from **2026-11-18** the default Go changes "
+            "Builds with the preinstalled Go (no `actions/setup-go`): from **2026-11-18** the default Go changes "
             "1.24 → 1.26 on Ubuntu 22.04/24.04 and Windows images (26.04 already defaults to 1.26), and 1.24 leaves "
             "the tool cache. Pinning the job to `ubuntu-24.04` does not freeze it; add `actions/setup-go` with an "
             "explicit `go-version`.", GO_DEFAULT))
@@ -365,7 +377,7 @@ def pin_file(path: Path, jobs: list[Job]) -> int:
 
 def render(jobs: list[Job], changes: dict, root: Path) -> str:
     latest = [j for j in jobs if j.latest]
-    high = sum(1 for j in latest for f in j.findings if f.severity == "high")
+    high = sum(1 for j in jobs for f in j.findings if f.severity == "high")
     L = ["# runner-flip report", "",
          f"`ubuntu-latest` → Ubuntu 26.04, rollout 2026-10-19 → 2026-11-19 ([announcement]({ISSUE})).",
          f"Scanned {len({j.file for j in jobs})} workflow files, {len(jobs)} jobs; "
@@ -382,8 +394,10 @@ def render(jobs: list[Job], changes: dict, root: Path) -> str:
     if latest:
         L += ["**Quick escape:** `runner-flip --pin` rewrites `ubuntu-latest` to `ubuntu-24.04` in these files "
               "(review the diff, commit, and plan a real upgrade; 24.04 stays supported for now)."]
+    elif not any(j.findings for j in jobs):
+        L.append("No jobs use `ubuntu-latest`, and no other dated image change applies. Nothing changes for you.")
     else:
-        L.append("No jobs use `ubuntu-latest`. Nothing changes for you.")
+        L.append("No jobs use `ubuntu-latest`; the findings above come from other dated runner-image changes.")
     return "\n".join(L) + "\n"
 
 
