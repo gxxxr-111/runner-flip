@@ -216,6 +216,18 @@ class WindowsNov30(unittest.TestCase):
         a = rf.Job("w.yml", "j", 1, "windows-11-arm", False, "steps:\n - run: cd C:\\a\\repo\\repo\n")
         rf.analyze_job(a, {}, None)
         self.assertIn("Arm64 moves to `D:`", " ".join(f.message for f in a.findings))
+        c = rf.Job("w.yml", "j", 1, "windows-2025", False, "steps:\n - run: fsutil quota track C:\n")
+        rf.analyze_job(c, {}, None)
+        self.assertEqual(c.findings, [])                                            # fsutil on C: is fine
+        exe = rf.Job("w.yml", "j", 1, "windows-2025", False, "steps:\n - run: fsutil.exe 8dot3name set D: 1\n")
+        rf.analyze_job(exe, {}, None)
+        self.assertEqual(len(exe.findings), 1)
+        v = rf.Job("w.yml", "j", 1, "windows-11-vs2026-arm", False, "steps:\n - run: cd C:\\a\\x\n")
+        rf.analyze_job(v, {}, None)
+        self.assertEqual(len(v.findings), 1)
+        sh = rf.Job("w.yml", "j", 1, "[self-hosted, windows]", False, "steps:\n - run: fsutil quota track D:\n")
+        rf.analyze_job(sh, {}, None)
+        self.assertEqual(sh.findings, [])
         ok = rf.Job("w.yml", "j", 1, "windows-2025", False, "steps:\n - run: dir C:\\PROGRA~1\n")   # C: stays NTFS
         rf.analyze_job(ok, {}, None)
         self.assertEqual(ok.findings, [])
@@ -227,6 +239,13 @@ class MacOpenSSL(unittest.TestCase):
             j = rf.Job("w.yml", "j", 1, ro, ro == "ubuntu-latest", "steps:\n - run: openssl req -new -x509 -nodes\n")
             rf.analyze_job(j, {}, None)
             self.assertEqual(sum("OpenSSL 4" in f.message for f in j.findings), n, ro)
+        three = rf.Job("w.yml", "j", 1, "macos-latest", False,
+                       "steps:\n - run: export PATH=\"$(brew --prefix openssl@3)/bin:$PATH\"\n - run: openssl req -new\n")
+        rf.analyze_job(three, {}, None)
+        self.assertEqual(three.findings, [])                                        # already pins OpenSSL 3
+        quoted = rf.Job("w.yml", "j", 1, "macos-26", False, "steps:\n - run: sh -c \"openssl pkeyutl -sign\"\n")
+        rf.analyze_job(quoted, {}, None)
+        self.assertEqual(len(quoted.findings), 1)
         w = rf.Job("w.yml", "j", 1, "macos-latest", False, "steps:\n - run: echo use openssl later\n")
         rf.analyze_job(w, {}, None)
         self.assertEqual(w.findings, [])

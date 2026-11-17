@@ -296,11 +296,15 @@ REFS = "https://github.com/actions/runner-images/issues/15315"
 ARM_WS = "https://github.com/actions/runner-images/issues/15314"
 MAC_OPENSSL = "https://github.com/actions/runner-images/issues/14856"
 MACOS_26 = re.compile(r"\bmacos-(?:latest(?:-large)?|26(?:-intel|-large|-xlarge)?)\b")   # runner-images README labels
-OPENSSL_CMD = re.compile(r"(?:^|[\s;&|(`])openssl\s+(?:req|x509|genrsa|genpkey|rsa|pkey|pkcs12|pkcs8|pkcs7|dgst|enc|"
-                         r"s_client|s_server|verify|rand|version|ec|ecparam|ca|cms|smime|base64|sha\d+|md5|crl|"
-                         r"speed|list|kdf|mac|ocsp|asn1parse)\b")
+OPENSSL_CMD = re.compile(r"(?:^|[\s;&|(`'\"])openssl\s+(?:req|x509|genrsa|genpkey|rsa|rsautl|pkey|pkeyutl|pkcs12|pkcs8|"
+                         r"pkcs7|crl2pkcs7|dgst|enc|s_client|s_server|s_time|verify|rand|version|ec|ecparam|dhparam|"
+                         r"dsa|gendsa|ca|cms|smime|base64|sha\d+|md5|crl|speed|list|kdf|mac|ocsp|asn1parse|passwd|"
+                         r"ciphers|ts|rehash|prime)\b")
+OPENSSL3_SELECTED = re.compile(r"openssl@3[^\n]*/bin|brew\s+--prefix\s+openssl@3")
 # NTFS features ReFS lacks (Microsoft ReFS overview): short 8.3 names, quotas, object IDs, transactions
-NTFS_ONLY = re.compile(r"\bfsutil\s+(?:8dot3name|quota|objectid|transaction)\b|\b[Dd]:[\\/][^\s'\"]*~\d")
+NTFS_ONLY = re.compile(r"\bfsutil(?:\.exe)?\s+(?:8dot3name|quota|objectid|transaction)\b[^\n]*?\b[Dd]:|"
+                       r"\b[Dd]:[\\/][^\s'\"]*~\d")   # must target D: (C: stays NTFS)
+WIN11_ARM = re.compile(r"\bwindows-11-(?:vs\d+-)?arm\b")      # windows-11-arm, windows-11-vs2026-arm
 ARM_C_WORKSPACE = re.compile(r"\b[Cc]:[\\/]+a[\\/]")
 
 
@@ -317,6 +321,8 @@ def _image_text(job: Job) -> str:
 def image_notices(job: Job) -> None:
     """Dated changes that also hit jobs NOT on ubuntu-latest (including ones pinned by runner-flip --pin)."""
     img = _image_text(job)
+    if "self-hosted" in img:
+        return   # these are GitHub-hosted image changes
     if "ubuntu-22.04" in img:
         job.findings.append(Finding("medium",
             "`ubuntu-22.04` is deprecated and retires on **2027-04-17** (jobs then fail). Scheduled brownouts fail jobs "
@@ -329,11 +335,11 @@ def image_notices(job: Job) -> None:
             "From **2026-11-30** the `D:` drive on Windows images is ReFS, not NTFS. This job uses an NTFS-only "
             "feature (8.3 short names, quotas, object IDs or transactions per Microsoft's ReFS overview) "
             "on or via `D:`.", REFS))
-    if "windows-11-arm" in img and ARM_C_WORKSPACE.search(code):
+    if WIN11_ARM.search(img) and ARM_C_WORKSPACE.search(code):
         job.findings.append(Finding("medium",
             "From **2026-11-30** the workspace on Windows 11 Arm64 moves to `D:`; this job hard-codes a `C:\\a\\…` "
             "path. Use `${{ github.workspace }}` / `GITHUB_WORKSPACE`.", ARM_WS))
-    if MACOS_26.search(img) and OPENSSL_CMD.search(code):
+    if MACOS_26.search(img) and OPENSSL_CMD.search(code) and not OPENSSL3_SELECTED.search(code):
         job.findings.append(Finding("medium",
             "On macOS 26 images (`macos-latest`, `macos-26*`) the default `openssl` became **OpenSSL 4** "
             "(rollout 2026-11-02 → 11-15). Scripts that expect 3.x options or output may break; OpenSSL 3 stays "
