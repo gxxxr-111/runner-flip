@@ -37,6 +37,9 @@ python3 runnerflip.py --image-diff          # just the 24.04 -> 26.04 software d
 
 Real repos, scanned 2026-11-17: spring-petclinic → Helm 3→4 in its cluster job (its Gradle and Maven jobs are safe, because of `setup-java`). jq → Docker 28→29 in its docker job. Flask → 8 jobs, all safe.
 
+
+**Also checked, on any runner label:** jobs on `ubuntu-22.04` (retires 2027-04-17, with brownouts before that; [announcement](https://github.com/actions/runner-images/issues/14254)), and jobs that use the preinstalled `go` without `actions/setup-go`, whose default changes from 1.24 to 1.26 on Ubuntu 22.04/24.04 and Windows from 2026-11-18 ([announcement](https://github.com/actions/runner-images/issues/15253)). That second change also hits jobs pinned to `ubuntu-24.04`, so `--pin` alone doesn't freeze Go. Jobs that bring their own Go (msys2/apt/brew packages, a `golang` container, version managers) are skipped.
+
 ## Limits
 - Line-based, with no YAML parser: it finds tools by command name, so it can miss tools invoked indirectly through scripts or Makefiles.
 - A version change isn't necessarily a break. It's where to look first.

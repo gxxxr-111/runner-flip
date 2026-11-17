@@ -286,10 +286,37 @@ def tokens_used(text: str) -> set[str]:
     return used
 
 
+UBUNTU_2204 = "https://github.com/actions/runner-images/issues/14254"
+OWN_GO = re.compile(r"mingw-w64-[\w-]*-go\b|apt(?:-get)?\s+install[^\n]*\bgolang|brew\s+install[^\n]*\bgo\b|"
+                    r"image:\s*['\"]?golang|container:\s*['\"]?golang|docker://golang|\bgoenv\b|asdf\s+install\s+golang|"
+                    r"\bgvm\s+use\b")
+GO_DEFAULT = "https://github.com/actions/runner-images/issues/15253"
+
+
+def image_notices(job: Job) -> None:
+    """Dated changes that also hit jobs NOT on ubuntu-latest (including ones pinned by runner-flip --pin)."""
+    ro = job.runs_on.lower()
+    if "ubuntu-22.04" in ro:
+        job.findings.append(Finding("high",
+            "`ubuntu-22.04` is deprecated and retires on **2027-04-17** (jobs then fail). Scheduled brownouts fail jobs "
+            "on March 23, March 30, April 6 and April 13 (14:00–24:00 UTC; the announcement omits the year, 2027 "
+            "implied by the retirement date). Move to `ubuntu-24.04` or `ubuntu-26.04`.", UBUNTU_2204))
+    used = tokens_used(job.text)
+    on_affected = any(k in ro for k in ("ubuntu-22.04", "ubuntu-24.04", "windows")) or job.latest
+    own_go = OWN_GO.search(job.text)   # Go from msys2/apt/brew/container/version managers, not the image default
+    if "go" in used and "setup:go" not in used and not own_go and on_affected:
+        job.findings.append(Finding("medium",
+            "Uses the preinstalled `go` without `actions/setup-go`: from **2026-11-18** the default Go changes "
+            "1.24 → 1.26 on Ubuntu 22.04/24.04 and Windows images (26.04 already defaults to 1.26), and 1.24 leaves "
+            "the tool cache. Pinning the job to `ubuntu-24.04` does not freeze it; add `actions/setup-go` with an "
+            "explicit `go-version`.", GO_DEFAULT))
+
+
 def analyze_job(job: Job, changes: dict, repo: Path | None = None):
+    job.text = inline_local_actions(job.text, repo)
+    image_notices(job)
     if not job.latest:
         return
-    job.text = inline_local_actions(job.text, repo)
     for rx, sev, msg, src in KNOWN:
         if rx.search(job.text):
             job.findings.append(Finding(sev, msg, src))
@@ -345,7 +372,7 @@ def render(jobs: list[Job], changes: dict, root: Path) -> str:
          f"**{len(latest)} on ubuntu-latest**, {high} high-risk findings. Image changes computed from the "
          f"official readmes: {sum(1 for v in changes.values() if v[2] == 'major')} major version changes, "
          f"{sum(1 for v in changes.values() if v[2] == 'removed')} removals.", ""]
-    for j in latest:
+    for j in [j for j in jobs if j.latest or j.findings]:
         rel = os.path.relpath(j.file, root)
         L.append(f"## {rel} · job `{j.name}` (line {j.line}) · runs-on `{j.runs_on}`")
         for f in sorted(j.findings, key=lambda f: {"high": 0, "medium": 1, "low": 2, "info": 3}[f.severity]):
@@ -394,7 +421,7 @@ def main(argv=None):
     if a.pin:
         n = sum(pin_file(p, jobs) for p in find_workflows(root))
         print(f"pinned {n} occurrence(s) of ubuntu-latest to ubuntu-24.04")
-    sys.exit(1 if any(f.severity == "high" for j in jobs if j.latest for f in j.findings) else 0)
+    sys.exit(1 if any(f.severity == "high" for j in jobs for f in j.findings) else 0)
 
 
 if __name__ == "__main__":

@@ -175,6 +175,30 @@ class ReviewRegressions(unittest.TestCase):
             shutil.rmtree(tmp)
 
 
+class ImageNotices(unittest.TestCase):
+    def job(self, runs_on, text):
+        return rf.Job("w.yml", "j", 1, runs_on, runs_on == "ubuntu-latest", text)
+
+    def test_2204_and_go_default(self):
+        j = self.job("ubuntu-22.04", "steps:\n - run: go test ./...\n")
+        rf.analyze_job(j, {}, None)
+        msgs = " ".join(f.message for f in j.findings)
+        self.assertIn("2027-04-17", msgs)
+        self.assertIn("1.24 → 1.26", msgs)
+        pinned = self.job("ubuntu-24.04", "steps:\n - run: go build\n")       # what --pin produces
+        rf.analyze_job(pinned, {}, None)
+        self.assertEqual([f.severity for f in pinned.findings], ["medium"])
+        ok = self.job("ubuntu-24.04", "steps:\n - uses: actions/setup-go@v5\n   with: {go-version: '1.24'}\n - run: go build\n")
+        rf.analyze_job(ok, {}, None)
+        self.assertEqual(ok.findings, [])
+        msys = self.job("windows-latest", "steps:\n - uses: msys2/setup-msys2@v2\n   with:\n     install: >\n       mingw-w64-x86_64-go\n - run: go build\n")
+        rf.analyze_job(msys, {}, None)
+        self.assertEqual([f for f in msys.findings if "1.24" in f.message], [])   # brings its own Go
+        mac = self.job("macos-15", "steps:\n - run: go build\n")                 # not in the announced set
+        rf.analyze_job(mac, {}, None)
+        self.assertEqual(mac.findings, [])
+
+
 class ReadmeFormat(unittest.TestCase):
     def test_unparseable_readme_exits_2(self):
         real = rf.fetch_readme
