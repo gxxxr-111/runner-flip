@@ -1,0 +1,10 @@
+{
+  "name": "runner-flip",
+  "version": "0.1.0",
+  "description": "What the ubuntu-latest switch to Ubuntu 26.04 changes for your GitHub Actions jobs; optional pin to 24.04.",
+  "author": {
+    "name": "gxxxr-111"
+  },
+  "repository": "https://github.com/gxxxr-111/runner-flip",
+  "license": "MIT"
+}

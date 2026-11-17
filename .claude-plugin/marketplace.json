@@ -1,0 +1,17 @@
+{
+  "name": "runner-flip",
+  "owner": {
+    "name": "gxxxr-111"
+  },
+  "metadata": {
+    "description": "What the ubuntu-latest switch to Ubuntu 26.04 changes for your GitHub Actions jobs; optional pin to 24.04.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "runner-flip",
+      "source": "./",
+      "description": "What the ubuntu-latest switch to Ubuntu 26.04 changes for your GitHub Actions jobs; optional pin to 24.04."
+    }
+  ]
+}
