@@ -259,6 +259,15 @@ class PullRequestTarget(unittest.TestCase):
         self.assertTrue(y("on:\n  pull_request_target:\n    types: [opened]\njobs:\n"))
         self.assertFalse(y("on: pull_request\njobs:\n  a:\n    steps:\n      - run: echo pull_request_target\n"))
         self.assertFalse(y("on:\n  # pull_request_target:\n  pull_request:\njobs:\n"))
+        self.assertTrue(y("on:\n  - push\n  - pull_request_target\njobs:\n"))                # block list
+        self.assertTrue(y('name: "x"\non:\n- pull_request_target\n\npermissions:\n  contents: read\njobs:\n'))  # unindented (cobra)
+        self.assertTrue(y("on: {pull_request_target: {types: [opened]}}\njobs:\n"))           # flow mapping
+        self.assertTrue(y("on: ['pull_request_target']\n"))                                     # quoted
+        self.assertTrue(y('"on":\n  "pull_request_target":\n    types: [opened]\n'))           # quoted keys
+        self.assertTrue(y("true:\n  pull_request_target:\n"))                                  # YAML 1.1 'on'
+        self.assertTrue(y("on: [push, pull_request_target]\r\njobs:\r\n"))                    # CRLF
+        self.assertFalse(y("on:\n  push:\n    branches: [pull_request_target]\njobs:\n"))     # a value, not an event
+        self.assertFalse(y("on:\n  workflow_run:\n    workflows: [pull_request_target]\n"))
 
     def test_once_per_file(self):
         with tempfile.TemporaryDirectory() as d:
@@ -269,6 +278,14 @@ class PullRequestTarget(unittest.TestCase):
             jobs = [j for f in rf.find_workflows(Path(d)) for j in rf.split_jobs(f)]
             rf.trigger_notices(jobs)
         self.assertEqual([len(j.findings) for j in jobs], [1, 0])
+        with tempfile.TemporaryDirectory() as d:                                   # no jobs: block at all
+            wf = Path(d) / ".github" / "workflows"
+            wf.mkdir(parents=True)
+            (wf / "r.yml").write_text("on:\n  pull_request_target:\n  workflow_call:\n")
+            files = rf.find_workflows(Path(d))
+            jobs = [j for f in files for j in rf.split_jobs(f)]
+            rf.trigger_notices(jobs, files)
+        self.assertEqual([(j.name, len(j.findings)) for j in jobs], [("(workflow)", 1)])
 
 
 class RunsOnParsing(unittest.TestCase):

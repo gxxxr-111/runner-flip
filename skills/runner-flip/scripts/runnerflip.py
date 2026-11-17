@@ -355,25 +355,89 @@ def image_notices(job: Job) -> None:
             "explicit `go-version`.", GO_DEFAULT))
 
 
-def uses_pull_request_target(workflow_text: str) -> bool:
-    """`pull_request_target` among the triggers (the part before `jobs:`), comments ignored."""
-    head = re.split(r"(?m)^jobs:\s*$", _strip_yaml_comments(workflow_text), maxsplit=1)[0]
-    return re.search(r"(?m)(?:^\s*|[\[,]\s*|^on:\s*)pull_request_target\b", head) is not None
+def _top_level_items(flow: str) -> list[str]:
+    """Names at depth 1 of a YAML flow value: '[a, "b"]' -> a, b; '{a: {x: 1}, b: [..]}' -> a, b; 'a' -> a."""
+    flow = flow.strip()
+    if not flow:
+        return []
+    if flow[0] not in "[{":
+        return [flow.strip("'\" ")]
+    out, depth, cur, is_map = [], 0, "", flow[0] == "{"
+    for ch in flow[1:-1] if flow[-1] in "]}" else flow[1:]:
+        if ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+        if depth == 0 and ch == ",":
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    out.append(cur)
+    names = []
+    for item in out:
+        item = item.strip()
+        if is_map:
+            item = re.split(r":(?:\s|$)", item, maxsplit=1)[0]
+        item = item.strip().strip("'\"")
+        if item and item[0] not in "[{":
+            names.append(item)
+    return names
 
 
-def trigger_notices(jobs: list[Job]) -> None:
-    """Workflow-level dated change: attach once per workflow file, to its first job."""
-    seen = set()
-    for j in jobs:
-        if j.file in seen or "/.github/workflows/" not in j.file.replace("\\", "/"):
+def workflow_events(workflow_text: str) -> list[str]:
+    """Top-level event names under `on:` (also `"on":` and YAML 1.1's `true:`), any form."""
+    lines = _strip_yaml_comments(workflow_text).replace("\r\n", "\n").splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"""^(?:on|'on'|"on"|true)\s*:\s*(.*)$""", line)
+        if not m:
             continue
-        seen.add(j.file)
-        if uses_pull_request_target(Path(j.file).read_text(errors="replace")):
-            j.findings.append(Finding("medium",
-                "This workflow runs on `pull_request_target`. From **2026-12-02** GitHub Actions blocks that event by "
-                "default in **public** repositories unless an Actions event policy explicitly allows it (brownouts ran "
-                "Nov 9 and Nov 16). Check Insights for blocked runs, then allow this workflow in a policy or move to "
-                "`pull_request`. Private and internal repositories are not affected.", PRT))
+        inline = m.group(1).strip()
+        if inline:
+            return _top_level_items(inline)
+        block, indent = [], None
+        for nxt in lines[i + 1:]:
+            if not nxt.strip():
+                continue
+            if not nxt[0].isspace() and not nxt.startswith("- "):
+                break   # an unindented "- item" list (valid YAML, used by cobra) continues the block
+            ind = len(nxt) - len(nxt.lstrip())
+            indent = ind if indent is None else indent
+            if ind == indent:
+                block.append(nxt.strip())
+        names = []
+        for b in block:
+            item = b[2:].strip() if b.startswith("- ") else re.split(r":(?:\s|$)", b, maxsplit=1)[0]
+            item = item.strip().strip("'\"")
+            if item:
+                names.append(item)
+        return names
+    return []
+
+
+def uses_pull_request_target(workflow_text: str) -> bool:
+    return "pull_request_target" in workflow_events(workflow_text)
+
+
+def trigger_notices(jobs: list[Job], files: list[Path] | None = None) -> None:
+    """Workflow-level dated change: once per workflow file, on its first job (or a file-level entry if it has none)."""
+    first: dict[str, Job] = {}
+    for j in jobs:
+        first.setdefault(j.file, j)
+    for f in files if files is not None else sorted({Path(j.file) for j in jobs}):
+        key = str(f)
+        if "/.github/workflows/" not in key.replace("\\", "/"):
+            continue
+        if not uses_pull_request_target(Path(f).read_text(errors="replace")):
+            continue
+        if key not in first:
+            first[key] = Job(key, "(workflow)", 1, "", False, "")
+            jobs.append(first[key])
+        first[key].findings.append(Finding("medium",
+            "This workflow runs on `pull_request_target`. From **2026-12-02** GitHub Actions blocks that event by "
+            "default in **public** repositories unless an Actions event policy explicitly allows it (brownouts ran "
+            "Nov 9 and Nov 16). Check Insights for blocked runs, then allow this workflow in a policy or move to "
+            "`pull_request`. Private and internal repositories are not affected.", PRT))
 
 
 def analyze_job(job: Job, changes: dict, repo: Path | None = None):
@@ -476,8 +540,9 @@ def main(argv=None):
             if kind != "minor":
                 print(f"{kind:8} {k}: {ov or '—'} → {nv or '—'}")
         return
-    jobs = [j for p in find_workflows(root) for j in split_jobs(p)]
-    trigger_notices(jobs)
+    wf_files = find_workflows(root)
+    jobs = [j for p in wf_files for j in split_jobs(p)]
+    trigger_notices(jobs, wf_files)
     for j in jobs:
         analyze_job(j, changes, root)
     if a.json:
