@@ -1,6 +1,6 @@
 ---
 name: runner-flip
-description: Check GitHub Actions or Azure Pipelines workflows for breakage from the ubuntu-latest switch to Ubuntu 26.04 (Nov 2026). Reports which tools each ubuntu-latest job uses that changed version or were removed (Java 25, Node 24, Python 3.14, CMake 4, Docker Compose 5, Helm 4, …), plus sudo-rs, runner-user and pinned-apt issues, and can pin jobs to ubuntu-24.04. Use when CI started failing on ubuntu-latest, when a user asks whether the runner change affects them, or before the migration deadline.
+description: Check GitHub Actions or Azure Pipelines workflows for breakage from the ubuntu-latest switch to Ubuntu 26.04 (Nov 2026). Reports which tools each ubuntu-latest job uses that changed version or were removed (Java 25, Node 24, Python 3.14, CMake 4, Docker Compose 5, Helm 4, …), plus sudo-rs, runner-user, pinned-apt and Docker 29 containerd-image-store issues, and can pin jobs to ubuntu-24.04. Use when CI started failing on ubuntu-latest, when a user asks whether the runner change affects them, or before the migration deadline.
 ---
 
 ```bash
