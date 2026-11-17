@@ -4,6 +4,8 @@
 
 **GitHub is moving `ubuntu-latest` from Ubuntu 24.04 to 26.04 between 2026-10-19 and 2026-11-19** ([actions/runner-images#14748](https://github.com/actions/runner-images/issues/14748)). runner-flip tells you what that changes for **your** workflows.
 
+It also flags the other dated changes to GitHub-hosted runners: the default Go becoming 1.26 on 2026-11-18 (including jobs pinned to `ubuntu-24.04`), Windows `D:` becoming ReFS on 2026-11-30, `pull_request_target` workflows blocked by default in public repos from 2026-12-02, OpenSSL 4 as the default on `macos-latest`, and `ubuntu-22.04` retiring on 2027-04-17. Details below.
+
 The announcement's table lists only Java among the version changes. The official image readmes show **26 major version changes and 18 removals**, including:
 
 | Tool | 24.04 | 26.04 |

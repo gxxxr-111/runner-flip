@@ -1,7 +1,7 @@
 {
   "name": "runner-flip",
   "version": "0.1.0",
-  "description": "What the ubuntu-latest switch to Ubuntu 26.04 changes for your GitHub Actions jobs; optional pin to 24.04.",
+  "description": "Checks your GitHub Actions and Azure Pipelines workflows for dated runner changes: ubuntu-latest to Ubuntu 26.04, the Go 1.26 default, Windows ReFS, pull_request_target blocked in public repos, macOS OpenSSL 4 and Ubuntu 22.04 retirement.",
   "author": {
     "name": "gxxxr-111"
   },
