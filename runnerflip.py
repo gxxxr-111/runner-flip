@@ -295,6 +295,7 @@ GO_DEFAULT = "https://github.com/actions/runner-images/issues/15253"
 REFS = "https://github.com/actions/runner-images/issues/15315"
 ARM_WS = "https://github.com/actions/runner-images/issues/15314"
 MAC_OPENSSL = "https://github.com/actions/runner-images/issues/14856"
+PRT = "https://github.blog/changelog/2026-11-02-pull_request_target-blocked-by-default-december-2"
 MACOS_26 = re.compile(r"\bmacos-(?:latest(?:-large)?|26(?:-intel|-large|-xlarge)?)\b")   # runner-images README labels
 OPENSSL_CMD = re.compile(r"(?:^|[\s;&|(`'\"])openssl\s+(?:req|x509|genrsa|genpkey|rsa|rsautl|pkey|pkeyutl|pkcs12|pkcs8|"
                          r"pkcs7|crl2pkcs7|dgst|enc|s_client|s_server|s_time|verify|rand|version|ec|ecparam|dhparam|"
@@ -352,6 +353,27 @@ def image_notices(job: Job) -> None:
             "1.24 → 1.26 on Ubuntu 22.04/24.04 and Windows images (26.04 already defaults to 1.26), and 1.24 leaves "
             "the tool cache. Pinning the job to `ubuntu-24.04` does not freeze it; add `actions/setup-go` with an "
             "explicit `go-version`.", GO_DEFAULT))
+
+
+def uses_pull_request_target(workflow_text: str) -> bool:
+    """`pull_request_target` among the triggers (the part before `jobs:`), comments ignored."""
+    head = re.split(r"(?m)^jobs:\s*$", _strip_yaml_comments(workflow_text), maxsplit=1)[0]
+    return re.search(r"(?m)(?:^\s*|[\[,]\s*|^on:\s*)pull_request_target\b", head) is not None
+
+
+def trigger_notices(jobs: list[Job]) -> None:
+    """Workflow-level dated change: attach once per workflow file, to its first job."""
+    seen = set()
+    for j in jobs:
+        if j.file in seen or "/.github/workflows/" not in j.file.replace("\\", "/"):
+            continue
+        seen.add(j.file)
+        if uses_pull_request_target(Path(j.file).read_text(errors="replace")):
+            j.findings.append(Finding("medium",
+                "This workflow runs on `pull_request_target`. From **2026-12-02** GitHub Actions blocks that event by "
+                "default in **public** repositories unless an Actions event policy explicitly allows it (brownouts ran "
+                "Nov 9 and Nov 16). Check Insights for blocked runs, then allow this workflow in a policy or move to "
+                "`pull_request`. Private and internal repositories are not affected.", PRT))
 
 
 def analyze_job(job: Job, changes: dict, repo: Path | None = None):
@@ -455,6 +477,7 @@ def main(argv=None):
                 print(f"{kind:8} {k}: {ov or '—'} → {nv or '—'}")
         return
     jobs = [j for p in find_workflows(root) for j in split_jobs(p)]
+    trigger_notices(jobs)
     for j in jobs:
         analyze_job(j, changes, root)
     if a.json:

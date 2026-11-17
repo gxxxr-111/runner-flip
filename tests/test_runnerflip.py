@@ -251,6 +251,26 @@ class MacOpenSSL(unittest.TestCase):
         self.assertEqual(w.findings, [])
 
 
+class PullRequestTarget(unittest.TestCase):
+    def test_trigger_forms(self):
+        y = rf.uses_pull_request_target
+        self.assertTrue(y("on: pull_request_target\njobs:\n  a:\n"))
+        self.assertTrue(y("on: [push, pull_request_target]\njobs:\n"))
+        self.assertTrue(y("on:\n  pull_request_target:\n    types: [opened]\njobs:\n"))
+        self.assertFalse(y("on: pull_request\njobs:\n  a:\n    steps:\n      - run: echo pull_request_target\n"))
+        self.assertFalse(y("on:\n  # pull_request_target:\n  pull_request:\njobs:\n"))
+
+    def test_once_per_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            wf = Path(d) / ".github" / "workflows"
+            wf.mkdir(parents=True)
+            (wf / "l.yml").write_text("on: pull_request_target\njobs:\n  a:\n    runs-on: ubuntu-24.04\n    steps: []\n"
+                                      "  b:\n    runs-on: ubuntu-24.04\n    steps: []\n")
+            jobs = [j for f in rf.find_workflows(Path(d)) for j in rf.split_jobs(f)]
+            rf.trigger_notices(jobs)
+        self.assertEqual([len(j.findings) for j in jobs], [1, 0])
+
+
 class RunsOnParsing(unittest.TestCase):
     def test_comments_and_azure(self):
         with tempfile.TemporaryDirectory() as d:
